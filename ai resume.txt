@@ -1,0 +1,54 @@
+import os
+import re
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
+from pdfminer.high_level import extract_text
+import nltk
+nltk.download('stopwords')
+from nltk.corpus import stopwords
+
+# === CONFIGURATION === #
+RESUME_FOLDER = './resumes/'  # Folder containing resume PDFs
+JOB_DESCRIPTION_FILE = './job_description.txt'  # Text file containing the job description
+TOP_N = 5  # Number of top candidates to return
+
+# === TEXT CLEANING FUNCTION === #
+def clean_text(text):
+    text = text.lower()
+    text = re.sub(r'[^a-zA-Z0-9\s]', '', text)
+    text = re.sub(r'\s+', ' ', text)
+    stop_words = set(stopwords.words('english'))
+    return ' '.join([word for word in text.split() if word not in stop_words])
+
+# === LOAD JOB DESCRIPTION === #
+with open(JOB_DESCRIPTION_FILE, 'r', encoding='utf-8') as f:
+    job_description = clean_text(f.read())
+
+# === LOAD & CLEAN RESUMES === #
+resumes = []
+resume_files = []
+
+for filename in os.listdir(RESUME_FOLDER):
+    if filename.endswith('.pdf'):
+        filepath = os.path.join(RESUME_FOLDER, filename)
+        text = extract_text(filepath)
+        cleaned = clean_text(text)
+        resumes.append(cleaned)
+        resume_files.append(filename)
+
+# === VECTORIZE TEXT === #
+documents = [job_description] + resumes
+vectorizer = TfidfVectorizer()
+vectors = vectorizer.fit_transform(documents)
+
+# === CALCULATE SIMILARITY === #
+jd_vector = vectors[0]
+resume_vectors = vectors[1:]
+similarities = cosine_similarity(jd_vector, resume_vectors).flatten()
+
+# === SORT & DISPLAY TOP MATCHES === #
+ranked_resumes = sorted(zip(resume_files, similarities), key=lambda x: x[1], reverse=True)
+
+print(f"\nTop {TOP_N} Matching Resumes:\n")
+for i, (filename, score) in enumerate(ranked_resumes[:TOP_N], start=1):
+    print(f"{i}. {filename} - Match Score: {score:.4f}")
